@@ -1,0 +1,2 @@
+# API/service clients (Supabase client, fetch wrappers). Server-only secrets
+# must never be imported here for browser use.
