@@ -13,13 +13,15 @@ import {
   IconArrowRight,
   IconCheck,
 } from '../components/ui/icons'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../features/auth/AuthProvider'
 
 function scrollToId(id) {
   const el = document.getElementById(id)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function Header() {
+function Header({ onStartValidating }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
       <Container className="flex h-16 items-center justify-between gap-4">
@@ -45,7 +47,7 @@ function Header() {
         </nav>
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => scrollToId('start')}
+            onClick={onStartValidating}
             className="hidden sm:inline-flex"
           >
             Start validating
@@ -91,9 +93,9 @@ function HeroVisual() {
   )
 }
 
-function Hero() {
+function Hero({ onStartValidating }) {
   return (
-    <section id="top" className="relative overflow-hidden">
+    <section className="relative overflow-hidden">
       <Container className="grid gap-12 py-16 lg:grid-cols-2 lg:items-center lg:py-24">
         <div className="animate-fade">
           <Badge variant="info">Pressure-test your idea</Badge>
@@ -106,7 +108,7 @@ function Hero() {
             worth validating before you commit time and money.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button onClick={() => scrollToId('start')}>Start validating</Button>
+            <Button onClick={onStartValidating}>Start validating</Button>
             <Button
               variant="secondary"
               onClick={() => scrollToId('how-it-works')}
@@ -273,7 +275,7 @@ function Trust() {
   )
 }
 
-function FinalCTA() {
+function FinalCTA({ onStartValidating }) {
   return (
     <Section id="start" className="border-t border-border">
       <div className="mx-auto max-w-2xl text-center">
@@ -285,7 +287,7 @@ function FinalCTA() {
           to building.
         </p>
         <div className="mt-8 flex justify-center">
-          <Button onClick={() => scrollToId('top')}>Start validating</Button>
+          <Button onClick={onStartValidating}>Start validating</Button>
         </div>
       </div>
     </Section>
@@ -338,16 +340,20 @@ function Footer() {
 }
 
 export default function LandingPage() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const startValidating = () => navigate(user ? '/dashboard' : '/signup')
+
   return (
     <div id="top" className="min-h-screen bg-background text-text-primary">
-      <Header />
+      <Header onStartValidating={startValidating} />
       <main>
-        <Hero />
+        <Hero onStartValidating={startValidating} />
         <ValueSection />
         <HowItWorks />
         <Features />
         <Trust />
-        <FinalCTA />
+        <FinalCTA onStartValidating={startValidating} />
       </main>
       <Footer />
     </div>

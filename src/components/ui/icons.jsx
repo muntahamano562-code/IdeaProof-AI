@@ -94,6 +94,14 @@ export function IconChevronDown({ className }) {
   )
 }
 
+export function IconMenu({ className }) {
+  return (
+    <Svg className={className}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </Svg>
+  )
+}
+
 export function IconArrowRight({ className }) {
   return (
     <Svg className={className}>
