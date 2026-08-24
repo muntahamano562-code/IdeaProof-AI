@@ -52,6 +52,7 @@
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    scroll-padding-top: 5rem;
   }
 
   body {

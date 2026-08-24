@@ -1,31 +1,30 @@
+import { useState } from 'react'
 import { ThemeProvider } from './components/ThemeProvider'
 import { ToastProvider } from './components/ui/Toast'
-import { Container } from './components/layout/Container'
+import LandingPage from './pages/LandingPage'
 import Playground from './pages/Playground'
 
-function ProductionPlaceholder() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background text-text-primary">
-      <Container className="text-center">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          IdeaProof AI
-        </p>
-        <h1 className="mt-2 font-display text-h1 font-semibold tracking-tight">
-          Design system ready.
-        </h1>
-        <p className="mt-3 text-text-secondary">
-          The product experience is built in later phases.
-        </p>
-      </Container>
-    </div>
-  )
-}
-
 export default function App() {
+  const [devPlayground, setDevPlayground] = useState(false)
+  const showPlayground = import.meta.env.DEV && devPlayground
+
   return (
     <ThemeProvider>
       <ToastProvider>
-        {import.meta.env.DEV ? <Playground /> : <ProductionPlaceholder />}
+        {showPlayground ? <Playground /> : <LandingPage />}
+
+        {import.meta.env.DEV && !showPlayground && (
+          <a
+            href="#dev-playground"
+            onClick={(e) => {
+              e.preventDefault()
+              setDevPlayground(true)
+            }}
+            className="fixed bottom-4 left-4 z-[70] rounded-md border border-border bg-elevated px-3 py-1.5 font-mono text-xs text-text-secondary shadow-sm transition-colors hover:text-text-primary"
+          >
+            dev · open component playground
+          </a>
+        )}
       </ToastProvider>
     </ThemeProvider>
   )
