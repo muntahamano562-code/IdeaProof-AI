@@ -1,9 +1,13 @@
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Card } from '../components/ui/Card'
 import { Alert } from '../components/ui/Alert'
 import { Button } from '../components/ui/Button'
+import { Spinner } from '../components/ui/Spinner'
 import { useAuth } from '../features/auth/AuthProvider'
 import { loadDraft } from '../features/ideas/ideaDraft'
+import { analyzeIdea } from '../services/analysis'
+import { AnalysisView } from '../features/analysis/AnalysisView'
 
 function formatTimestamp(iso) {
   if (!iso) return null
@@ -16,11 +20,51 @@ function formatTimestamp(iso) {
   }
 }
 
+const STAGE_MESSAGES = {
+  preparing: 'Preparing your idea…',
+  analyzing: 'Analyzing your idea with AI…',
+  structuring: 'Structuring the results…',
+}
+
 export default function IdeaDetailPage() {
   const { id } = useParams()
   const { user } = useAuth()
   const draft = user ? loadDraft(user.id) : null
   const found = Boolean(draft && draft.id === id)
+
+  const [analysis, setAnalysis] = useState(null)
+  const [stage, setStage] = useState('idle')
+  const [error, setError] = useState(null)
+  const timers = useRef([])
+
+  useEffect(() => {
+    return () => timers.current.forEach(clearTimeout)
+  }, [])
+
+  function clearTimers() {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+  }
+
+  async function runAnalysis() {
+    if (!draft) return
+    clearTimers()
+    setError(null)
+    setAnalysis(null)
+    setStage('preparing')
+    timers.current.push(setTimeout(() => setStage('analyzing'), 700))
+    timers.current.push(setTimeout(() => setStage('structuring'), 1800))
+    try {
+      const result = await analyzeIdea(draft)
+      setAnalysis(result)
+      setStage('done')
+    } catch (err) {
+      setError(err.message || 'Analysis could not be completed.')
+      setStage('error')
+    } finally {
+      clearTimers()
+    }
+  }
 
   if (!found) {
     return (
@@ -51,6 +95,7 @@ export default function IdeaDetailPage() {
 
   const created = formatTimestamp(draft.createdAt)
   const updated = formatTimestamp(draft.updatedAt)
+  const inProgress = stage === 'preparing' || stage === 'analyzing' || stage === 'structuring'
 
   return (
     <>
@@ -117,6 +162,53 @@ export default function IdeaDetailPage() {
           </Link>
         </div>
       </Card>
+
+      <section className="mt-10" aria-labelledby="analysis-heading">
+        <h2 id="analysis-heading" className="font-display text-h2 font-semibold tracking-tight text-text-primary">
+          AI analysis
+        </h2>
+        <p className="mt-2 text-text-secondary">
+          Pressure-test this idea with an AI assessor.
+        </p>
+
+        <div className="mt-6">
+          {stage === 'idle' && !analysis && (
+            <Button onClick={runAnalysis}>Run analysis</Button>
+          )}
+
+          {inProgress && (
+            <div
+              className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 text-text-primary"
+              aria-live="polite"
+            >
+              <Spinner />
+              <span>{STAGE_MESSAGES[stage]}</span>
+            </div>
+          )}
+
+          {stage === 'error' && (
+            <div className="flex flex-col gap-4">
+              <Alert variant="danger" title="Analysis failed" icon>
+                {error}
+              </Alert>
+              <div>
+                <Button onClick={runAnalysis}>Try again</Button>
+              </div>
+            </div>
+          )}
+
+          {stage === 'done' && analysis && (
+            <div className="flex flex-col gap-6">
+              <AnalysisView analysis={analysis} />
+              <div>
+                <Button variant="secondary" onClick={runAnalysis}>
+                  Run analysis again
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
     </>
   )
 }
