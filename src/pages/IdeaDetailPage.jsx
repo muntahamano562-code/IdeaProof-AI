@@ -7,7 +7,7 @@ import { Spinner } from '../components/ui/Spinner'
 import { useAuth } from '../features/auth/AuthProvider'
 import { loadDraft } from '../features/ideas/ideaDraft'
 import { analyzeIdea } from '../services/analysis'
-import { AnalysisView } from '../features/analysis/AnalysisView'
+import { AnalysisDashboard } from '../features/analysis/AnalysisDashboard'
 
 function formatTimestamp(iso) {
   if (!iso) return null
@@ -199,7 +199,7 @@ export default function IdeaDetailPage() {
 
           {stage === 'done' && analysis && (
             <div className="flex flex-col gap-6">
-              <AnalysisView analysis={analysis} />
+              <AnalysisDashboard analysis={analysis} />
               <div>
                 <Button variant="secondary" onClick={runAnalysis}>
                   Run analysis again
