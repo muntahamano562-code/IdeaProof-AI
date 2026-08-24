@@ -60,6 +60,15 @@
     font-family: 'Inter', system-ui, sans-serif;
   }
 
+  /* Global, consistent focus indicator for keyboard users.
+     Component-level focus rings are intentionally avoided to keep a single
+     source of truth for focus styling across the design system. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-primary));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -70,4 +79,32 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+@keyframes ip-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ip-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade {
+  animation: ip-fade 150ms ease-out;
+}
+
+.animate-modal {
+  animation: ip-fade-scale 150ms ease-out;
 }

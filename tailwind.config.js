@@ -27,6 +27,13 @@ export default {
         display: ['"Space Grotesk"', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
+      fontSize: {
+        display: ['2.5rem', { lineHeight: '1.1', fontWeight: '600' }],
+        h1: ['2rem', { lineHeight: '1.15', fontWeight: '600' }],
+        h2: ['1.5rem', { lineHeight: '1.2', fontWeight: '600' }],
+        h3: ['1.25rem', { lineHeight: '1.25', fontWeight: '600' }],
+        button: ['0.9375rem', { lineHeight: '1.4', fontWeight: '500' }],
+      },
       borderRadius: {
         sm: '0.375rem',
         DEFAULT: '0.5rem',
