@@ -9,48 +9,103 @@ class AnalysisError extends Error {
 
 const SYSTEM_PROMPT = `You are IdeaProof, a rigorous and skeptical startup-idea analyst.
 
-Your job is to pressure-test an idea and return a structured assessment. You must
-output ONLY a single JSON object (no markdown, no code fences, no commentary)
-that matches this exact shape:
+Your job is to pressure-test an idea and return ONLY one valid JSON object.
+
+The JSON must have exactly this structure:
 
 {
-  "summary": string,
-  "problemAnalysis": string,
-  "targetAudienceAnalysis": string,
-  "feasibilityAnalysis": string,
-  "competitionAnalysis": string,
-  "assumptions": [{ "assumption": string, "rationale": string }],
-  "risks": [{ "risk": string, "severity": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL", "note": string }],
-  "categoryScores": [{ "category": string, "score": number, "explanation": string }],
-  "overallScore": number,
-  "confidence": number,
-  "mvpRecommendation": string,
-  "experiments": [{ "title": string, "successCriteria": string, "timeline": string }],
-  "verdict": "BUILD"|"PIVOT"|"DON'T BUILD"
+  "summary": "string",
+  "problemAnalysis": "string",
+  "targetAudienceAnalysis": "string",
+  "feasibilityAnalysis": "string",
+  "competitionAnalysis": "string",
+  "assumptions": [
+    {
+      "assumption": "string",
+      "rationale": "string"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "string",
+      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
+      "note": "string"
+    }
+  ],
+  "categoryScores": [
+    {
+      "category": "Problem Clarity",
+      "score": 0,
+      "explanation": "string"
+    },
+    {
+      "category": "Market",
+      "score": 0,
+      "explanation": "string"
+    },
+    {
+      "category": "Feasibility",
+      "score": 0,
+      "explanation": "string"
+    },
+    {
+      "category": "Differentiation",
+      "score": 0,
+      "explanation": "string"
+    },
+    {
+      "category": "Momentum",
+      "score": 0,
+      "explanation": "string"
+    }
+  ],
+  "overallScore": 0,
+  "confidence": 0,
+  "mvpRecommendation": "string",
+  "experiments": [
+    {
+      "title": "string",
+      "successCriteria": "string",
+      "timeline": "string"
+    }
+  ],
+  "verdict": "BUILD|PIVOT|DON'T BUILD"
 }
 
 Rules:
-- Be honest and evidence-based.
-- State uncertainty explicitly when appropriate.
-- Every score must include a written explanation.
-- Do not invent facts, statistics, market sizes, or competitor names.
-- Keep everything grounded in the idea provided.
-- Avoid hype.
-- Use these categories exactly:
-  Problem Clarity, Market, Feasibility, Differentiation, Momentum.`
+- Be skeptical and honest.
+- Do not invent statistics.
+- Do not invent market sizes.
+- Do not invent competitor names.
+- Keep the assessment grounded in the supplied idea.
+- Scores must be numbers from 0 to 100.
+- Provide exactly the five categories listed above.
+- Return JSON only.
+- Do not use markdown.
+- Do not use code fences.`
 
 function buildPrompt(idea) {
-  const targetUsers = idea.targetUsers?.trim() || 'Not provided'
-  const problem = idea.problem?.trim() || 'Not provided'
+  const targetUsers =
+    idea.targetUsers?.trim() || 'Not provided'
 
-  return `Analyze the following startup idea.
+  const problem =
+    idea.problem?.trim() || 'Not provided'
 
-Title: ${idea.title}
-Description: ${idea.description}
-Target users: ${targetUsers}
-Problem being solved: ${problem}
+  return `Analyze this startup idea.
 
-Return the structured analysis now.`
+Title:
+${idea.title}
+
+Description:
+${idea.description}
+
+Target users:
+${targetUsers}
+
+Problem being solved:
+${problem}
+
+Return ONLY the required JSON object.`
 }
 
 async function readBody(req) {
@@ -117,7 +172,10 @@ function validateInput(body) {
     errors.push('Description is too short.')
   }
 
-  if (title.length > 5000 || description.length > 20000) {
+  if (
+    title.length > 5000 ||
+    description.length > 20000
+  ) {
     errors.push('Input exceeds size limits.')
   }
 
@@ -144,7 +202,7 @@ function parseAndValidate(content) {
       try {
         data = JSON.parse(match[1])
       } catch {
-        // Continue to validation error below.
+        // Ignore and throw below.
       }
     }
 
@@ -156,12 +214,17 @@ function parseAndValidate(content) {
     }
   }
 
-  const result = AnalysisSchema.safeParse(data)
+  const result =
+    AnalysisSchema.safeParse(data)
 
   if (!result.success) {
     console.error(
       'ANALYSIS SCHEMA ERROR:',
-      JSON.stringify(result.error.format(), null, 2),
+      JSON.stringify(
+        result.error.format(),
+        null,
+        2,
+      ),
     )
 
     throw new AnalysisError(
@@ -175,14 +238,17 @@ function parseAndValidate(content) {
 
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 20
+
 const hits = new Map()
 
 function checkRateLimit() {
   const now = Date.now()
 
-  const entries = (hits.get('global') || []).filter(
-    (time) => now - time < RATE_LIMIT_WINDOW_MS,
-  )
+  const entries =
+    (hits.get('global') || []).filter(
+      (time) =>
+        now - time < RATE_LIMIT_WINDOW_MS,
+    )
 
   if (entries.length >= RATE_LIMIT_MAX) {
     throw new AnalysisError(
@@ -195,8 +261,9 @@ function checkRateLimit() {
   hits.set('global', entries)
 }
 
-async function callLLM(idea) {
-  const apiKey = process.env.LLM_API_KEY
+async function callGemini(idea) {
+  const apiKey =
+    process.env.LLM_API_KEY
 
   if (!apiKey) {
     throw new AnalysisError(
@@ -205,63 +272,65 @@ async function callLLM(idea) {
     )
   }
 
-  const baseUrl = (
-    process.env.LLM_BASE_URL ||
-    'https://api.openai.com/v1'
-  ).replace(/\/$/, '')
-
   const model =
     process.env.LLM_MODEL ||
-    'gpt-4o-mini'
+    'gemini-2.5-flash'
 
-  const controller = new AbortController()
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
-  const timeout = setTimeout(
-    () => controller.abort(),
-    60000,
-  )
+  const controller =
+    new AbortController()
 
-  try {
-    const res = await fetch(
-      `${baseUrl}/chat/completions`,
-      {
-        method: 'POST',
-
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-
-        body: JSON.stringify({
-          model,
-
-          response_format: {
-            type: 'json_object',
-          },
-
-          temperature: 0.3,
-
-          messages: [
-            {
-              role: 'system',
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: 'user',
-              content: buildPrompt(idea),
-            },
-          ],
-        }),
-
-        signal: controller.signal,
-      },
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      60000,
     )
 
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text: SYSTEM_PROMPT,
+            },
+          ],
+        },
+
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: buildPrompt(idea),
+              },
+            ],
+          },
+        ],
+
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: 'application/json',
+        },
+      }),
+
+      signal: controller.signal,
+    })
+
     if (!res.ok) {
-      const errorText = await res.text()
+      const errorText =
+        await res.text()
 
       console.error(
-        'LLM PROVIDER ERROR:',
+        'GEMINI PROVIDER ERROR:',
         res.status,
         errorText,
       )
@@ -272,14 +341,17 @@ async function callLLM(idea) {
       )
     }
 
-    const json = await res.json()
+    const json =
+      await res.json()
 
     const content =
-      json?.choices?.[0]?.message?.content
+      json?.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || '')
+        .join('')
 
     if (!content) {
       console.error(
-        'LLM EMPTY RESPONSE:',
+        'GEMINI EMPTY RESPONSE:',
         JSON.stringify(json),
       )
 
@@ -295,7 +367,10 @@ async function callLLM(idea) {
       throw err
     }
 
-    if (err && err.name === 'AbortError') {
+    if (
+      err &&
+      err.name === 'AbortError'
+    ) {
       throw new AnalysisError(
         504,
         'The analysis request timed out.',
@@ -303,7 +378,7 @@ async function callLLM(idea) {
     }
 
     console.error(
-      'LLM CONNECTION ERROR:',
+      'GEMINI CONNECTION ERROR:',
       err,
     )
 
@@ -316,8 +391,14 @@ async function callLLM(idea) {
   }
 }
 
-export async function analyzeHandler(req, res) {
-  if (req.method && req.method !== 'POST') {
+export async function analyzeHandler(
+  req,
+  res,
+) {
+  if (
+    req.method &&
+    req.method !== 'POST'
+  ) {
     res.statusCode = 405
 
     res.setHeader(
@@ -334,7 +415,8 @@ export async function analyzeHandler(req, res) {
     return
   }
 
-  const body = await readBody(req)
+  const body =
+    await readBody(req)
 
   const {
     title,
@@ -364,12 +446,13 @@ export async function analyzeHandler(req, res) {
   try {
     checkRateLimit()
 
-    const analysis = await callLLM({
-      title,
-      description,
-      targetUsers,
-      problem,
-    })
+    const analysis =
+      await callGemini({
+        title,
+        description,
+        targetUsers,
+        problem,
+      })
 
     res.statusCode = 200
 
