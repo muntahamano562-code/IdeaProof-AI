@@ -134,6 +134,27 @@ function parseAndValidate(content) {
   return result.data
 }
 
+// Lightweight in-process abuse protection. Not a substitute for platform-level
+// rate limiting, but it keeps the endpoint from being hammered locally.
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 20
+const hits = new Map()
+
+function checkRateLimit() {
+  const now = Date.now()
+  const entries = (hits.get('global') || []).filter(
+    (t) => now - t < RATE_LIMIT_WINDOW_MS,
+  )
+  if (entries.length >= RATE_LIMIT_MAX) {
+    throw new AnalysisError(
+      429,
+      'Too many requests right now. Please wait a moment and try again.',
+    )
+  }
+  entries.push(now)
+  hits.set('global', entries)
+}
+
 async function callLLM(idea) {
   const apiKey = process.env.LLM_API_KEY
   if (!apiKey) {
@@ -209,6 +230,7 @@ export async function analyzeHandler(req, res) {
   }
 
   try {
+    checkRateLimit()
     const analysis = await callLLM({ title, description, targetUsers, problem })
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
