@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../features/auth/AuthProvider'
+import { isSupabaseConfigured } from '../../services/supabase'
 import { Spinner } from '../ui/Spinner'
 
 /**
@@ -8,10 +9,18 @@ import { Spinner } from '../ui/Spinner'
  * - If unauthenticated: redirects to /login, preserving the intended
  *   destination via router state.
  * - If authenticated: renders the nested route (AppShell + page).
+ *
+ * Local-only / demo mode: when Supabase is not configured the app stores
+ * everything on-device and intentionally does not require sign-in, so the
+ * guarded routes are rendered directly.
  */
 export function ProtectedRoute() {
   const { user, loading } = useAuth()
   const location = useLocation()
+
+  if (!isSupabaseConfigured) {
+    return <Outlet />
+  }
 
   if (loading) {
     return (

@@ -109,3 +109,43 @@
 .animate-modal {
   animation: ip-fade-scale 150ms ease-out;
 }
+
+/* Print: keep only the report content. Hide navigation, toolbars, and other
+   interactive chrome. Force light, readable colors so the report prints cleanly
+   regardless of the active (dark) theme. Browser "Save as PDF" covers export. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  * {
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  .bg-surface,
+  .bg-elevated,
+  .bg-background {
+    background: #ffffff !important;
+  }
+
+  .border-border {
+    border-color: #cccccc !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  a {
+    text-decoration: underline;
+  }
+}

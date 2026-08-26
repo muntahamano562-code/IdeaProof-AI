@@ -14,6 +14,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
+      // Local-only / demo mode: no backend is configured, so the app stores
+      // everything on-device under a stable local identity.
+      setUser({ id: 'local', email: 'local@ideaproof.local' })
       setLoading(false)
       return
     }

@@ -1,6 +1,7 @@
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
+import { Button } from '../../components/ui/Button'
 import { ScoreRing } from '../../components/analysis/ScoreRing'
 import { RiskRadar } from '../../components/analysis/RiskRadar'
 
@@ -49,7 +50,7 @@ function Paragraph({ children }) {
   return <p className="whitespace-pre-wrap text-text-primary">{children}</p>
 }
 
-export function AnalysisDashboard({ analysis }) {
+export function AnalysisDashboard({ analysis, onOpenPlan }) {
   if (!analysis) return null
 
   const {
@@ -238,7 +239,7 @@ export function AnalysisDashboard({ analysis }) {
       {experiments.length > 0 && (
         <Section
           title="Validation experiments"
-          description="Preview based on the analysis. Full experiment tracking arrives in a later phase."
+          description="Preview based on the analysis. Mark progress and link each experiment to an assumption in the full validation plan."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             {experiments.map((item, i) => (
@@ -256,6 +257,13 @@ export function AnalysisDashboard({ analysis }) {
               </Card>
             ))}
           </div>
+          {typeof onOpenPlan === 'function' && (
+            <div className="mt-4">
+              <Button variant="secondary" onClick={onOpenPlan}>
+                Open the validation plan
+              </Button>
+            </div>
+          )}
         </Section>
       )}
     </div>

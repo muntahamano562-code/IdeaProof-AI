@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Card } from '../components/ui/Card'
 import { Alert } from '../components/ui/Alert'
@@ -6,19 +6,12 @@ import { Button } from '../components/ui/Button'
 import { Spinner } from '../components/ui/Spinner'
 import { useAuth } from '../features/auth/AuthProvider'
 import { loadDraft } from '../features/ideas/ideaDraft'
+import { getIdeaHistory, saveIdeaHistory } from '../features/history/historyStore'
+import { formatTimestamp } from '../lib/datetime'
 import { analyzeIdea } from '../services/analysis'
 import { AnalysisDashboard } from '../features/analysis/AnalysisDashboard'
-
-function formatTimestamp(iso) {
-  if (!iso) return null
-  try {
-    const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) return null
-    return date.toLocaleString()
-  } catch {
-    return null
-  }
-}
+import { ChallengeMode } from '../features/challenge/ChallengeMode'
+import { ValidationPlan } from '../features/validation/ValidationPlan'
 
 const STAGE_MESSAGES = {
   preparing: 'Preparing your idea…',
@@ -29,12 +22,27 @@ const STAGE_MESSAGES = {
 export default function IdeaDetailPage() {
   const { id } = useParams()
   const { user } = useAuth()
-  const draft = user ? loadDraft(user.id) : null
+
+  // History is the canonical multi-idea store; fall back to the single draft.
+  const record = useMemo(() => {
+    try {
+      return getIdeaHistory(id)
+    } catch {
+      return null
+    }
+  }, [id])
+  const draft = record ? record.idea : user ? loadDraft(user.id) : null
   const found = Boolean(draft && draft.id === id)
 
-  const [analysis, setAnalysis] = useState(null)
-  const [stage, setStage] = useState('idle')
+  const [analysis, setAnalysis] = useState(() =>
+    record && record.analysis ? record.analysis : null,
+  )
+  const [stage, setStage] = useState(() =>
+    record && record.analysis ? 'done' : 'idle',
+  )
   const [error, setError] = useState(null)
+  const [showChallenge, setShowChallenge] = useState(false)
+  const [showPlan, setShowPlan] = useState(false)
   const timers = useRef([])
 
   useEffect(() => {
@@ -58,6 +66,14 @@ export default function IdeaDetailPage() {
       const result = await analyzeIdea(draft)
       setAnalysis(result)
       setStage('done')
+      const now = new Date().toISOString()
+      saveIdeaHistory({
+        id: draft.id,
+        idea: draft,
+        analysis: result,
+        createdAt: (record && record.createdAt) || draft.createdAt || now,
+        updatedAt: now,
+      })
     } catch (err) {
       setError(err.message || 'Analysis could not be completed.')
       setStage('error')
@@ -81,8 +97,11 @@ export default function IdeaDetailPage() {
             different account. Drafts are stored locally per signed-in user.
           </Alert>
           <div className="mt-6 flex flex-wrap gap-3">
+            <Link to="/history">
+              <Button variant="secondary">View saved ideas</Button>
+            </Link>
             <Link to="/dashboard">
-              <Button variant="secondary">Back to dashboard</Button>
+              <Button variant="ghost">Back to dashboard</Button>
             </Link>
             <Link to="/ideas/new">
               <Button>Create a new idea</Button>
@@ -93,8 +112,8 @@ export default function IdeaDetailPage() {
     )
   }
 
-  const created = formatTimestamp(draft.createdAt)
-  const updated = formatTimestamp(draft.updatedAt)
+  const created = formatTimestamp(record?.createdAt || draft.createdAt)
+  const updated = formatTimestamp(record?.updatedAt || draft.updatedAt)
   const inProgress = stage === 'preparing' || stage === 'analyzing' || stage === 'structuring'
 
   return (
@@ -198,10 +217,66 @@ export default function IdeaDetailPage() {
           )}
 
           {stage === 'done' && analysis && (
-            <div className="flex flex-col gap-6">
-              <AnalysisDashboard analysis={analysis} />
-              <div>
-                <Button variant="secondary" onClick={runAnalysis}>
+            <div className="flex flex-col gap-10">
+              <AnalysisDashboard
+                analysis={analysis}
+                onOpenPlan={() => setShowPlan(true)}
+              />
+
+              <section aria-labelledby="challenge-heading">
+                <h2
+                  id="challenge-heading"
+                  className="font-display text-h2 font-semibold tracking-tight text-text-primary"
+                >
+                  Challenge your idea
+                </h2>
+                <p className="mt-2 text-text-secondary">
+                  Stress-test your assumptions before you decide what to build.
+                </p>
+                <Alert variant="info" title="AI simulation of skeptical scrutiny" icon>
+                  This is a simulation of a skeptical reviewer, not an objective
+                  validator. The counterarguments are one perspective to sharpen
+                  your thinking — not verified facts.
+                </Alert>
+
+                <div className="mt-6">
+                  {!showChallenge ? (
+                    <Button onClick={() => setShowChallenge(true)}>
+                      Start challenge mode
+                    </Button>
+                  ) : (
+                    <ChallengeMode idea={draft} analysis={analysis} />
+                  )}
+                </div>
+              </section>
+
+              <section aria-labelledby="plan-heading">
+                <h2
+                  id="plan-heading"
+                  className="font-display text-h2 font-semibold tracking-tight text-text-primary"
+                >
+                  Validation plan
+                </h2>
+                <p className="mt-2 text-text-secondary">
+                  Turn the analysis into real-world tests for your key assumptions.
+                </p>
+
+                <div className="mt-6">
+                  {!showPlan ? (
+                    <Button onClick={() => setShowPlan(true)}>
+                      Build validation plan
+                    </Button>
+                  ) : (
+                    <ValidationPlan idea={draft} analysis={analysis} />
+                  )}
+                </div>
+              </section>
+
+              <div className="flex flex-wrap gap-3">
+                <Link to={`/ideas/${draft.id}/report`}>
+                  <Button variant="secondary">View full report</Button>
+                </Link>
+                <Button variant="ghost" onClick={runAnalysis}>
                   Run analysis again
                 </Button>
               </div>
