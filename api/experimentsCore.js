@@ -3,13 +3,6 @@ import {
   validateExperimentsResponse,
 } from '../src/schemas/experiment.schema.js'
 
-/**
- * IdeaProof AI — Validation Experiments API
- *
- * Uses Google Gemini API through its OpenAI-compatible endpoint.
- * The API key stays server-side in Vercel environment variables.
- */
-
 class ExperimentError extends Error {
   constructor(status, message) {
     super(message)
@@ -19,66 +12,130 @@ class ExperimentError extends Error {
 
 const SYSTEM_PROMPT = `You are IdeaProof's validation planner.
 
-Your job is to turn a startup idea's assumptions and risks into concrete,
-real-world validation experiments.
+Turn a startup idea's assumptions and risks into practical validation experiments.
 
-Return ONLY one valid JSON object.
-
-Required shape:
+Return ONLY valid JSON:
 
 {
   "experiments": [
     {
       "id": "experiment-1",
-      "hypothesis": "string",
-      "method": "string",
-      "successCriteria": "string",
-      "effort": "LOW" | "MEDIUM" | "HIGH",
-      "timeline": "string",
+      "hypothesis": "belief being tested",
+      "method": "how to run the experiment",
+      "successCriteria": "specific measurable proposed criteria",
+      "effort": "LOW",
+      "timeline": "rough timebox",
       "assumptionIds": ["assumption-1"]
     }
   ]
 }
 
 Rules:
-
 - Produce 3 to 6 experiments.
-- Every experiment must test one or more provided assumptions or risks.
-- Use only assumption IDs and risk IDs that were provided.
-- successCriteria must be concrete and measurable.
-- Do not pretend that an experiment has already been performed.
-- Do not invent research, statistics, users, competitors, or results.
-- Keep experiments practical for an early-stage founder.
-- Prefer interviews, surveys, prototypes, landing pages, manual tests,
-  pre-orders, usability tests, and small validation experiments.
-- Use IDs experiment-1, experiment-2, experiment-3, etc.
-- Be skeptical and honest.
-- Return JSON only.`
+- IDs must be experiment-1, experiment-2, etc.
+- Link experiments to provided assumption/risk IDs.
+- successCriteria must be measurable.
+- These experiments are proposed and have NOT been conducted.
+- Never invent results.
+- Never invent statistics.
+- Do not use markdown.`
+
+const RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+
+  properties: {
+    experiments: {
+      type: 'ARRAY',
+
+      items: {
+        type: 'OBJECT',
+
+        properties: {
+          id: {
+            type: 'STRING',
+          },
+
+          hypothesis: {
+            type: 'STRING',
+          },
+
+          method: {
+            type: 'STRING',
+          },
+
+          successCriteria: {
+            type: 'STRING',
+          },
+
+          effort: {
+            type: 'STRING',
+            enum: ['LOW', 'MEDIUM', 'HIGH'],
+          },
+
+          timeline: {
+            type: 'STRING',
+          },
+
+          assumptionIds: {
+            type: 'ARRAY',
+            items: {
+              type: 'STRING',
+            },
+          },
+        },
+
+        required: [
+          'id',
+          'hypothesis',
+          'method',
+          'successCriteria',
+          'effort',
+          'timeline',
+          'assumptionIds',
+        ],
+      },
+    },
+  },
+
+  required: ['experiments'],
+}
 
 function buildPrompt(idea, analysis) {
-  const targetUsers = idea.targetUsers?.trim() || 'Not provided'
-  const problem = idea.problem?.trim() || 'Not provided'
+  const targetUsers =
+    idea.targetUsers?.trim() ||
+    'Not provided'
 
-  const assumptionRefs = Array.isArray(analysis.assumptions)
-    ? analysis.assumptions.map(
-        (a, i) => `assumption-${i + 1}: ${a.assumption}`,
+  const problem =
+    idea.problem?.trim() ||
+    'Not provided'
+
+  const assumptions =
+    analysis.assumptions
+      ?.map(
+        (a, index) =>
+          `assumption-${index + 1}: ${a.assumption}`,
       )
-    : []
+      .join('\n') || '(none)'
 
-  const riskRefs = Array.isArray(analysis.risks)
-    ? analysis.risks.map((r, i) => `risk-${i + 1}: ${r.risk}`)
-    : []
+  const risks =
+    analysis.risks
+      ?.map(
+        (r, index) =>
+          `risk-${index + 1}: ${r.risk}`,
+      )
+      .join('\n') || '(none)'
 
-  const existingExperiments = Array.isArray(analysis.experiments)
-    ? analysis.experiments
-        .map(
-          (e) =>
-            `- ${e.title} (success: ${e.successCriteria}; timeline: ${e.timeline})`,
-        )
-        .join('\n')
-    : '(none)'
+  const existingExperiments =
+    analysis.experiments
+      ?.map(
+        (e) =>
+          `- ${e.title} | success: ${e.successCriteria} | timeline: ${e.timeline}`,
+      )
+      .join('\n') || '(none)'
 
-  return `Create a validation plan for this startup idea.
+  return `Create a practical validation plan.
+
+Startup idea:
 
 Title:
 ${idea.title}
@@ -89,7 +146,7 @@ ${idea.description}
 Target users:
 ${targetUsers}
 
-Problem being solved:
+Problem:
 ${problem}
 
 AI assessment summary:
@@ -99,20 +156,15 @@ Verdict:
 ${analysis.verdict}
 
 Assumptions:
-${assumptionRefs.join('\n') || '(none listed)'}
+${assumptions}
 
 Risks:
-${riskRefs.join('\n') || '(none listed)'}
+${risks}
 
-Existing experiment hints:
+Existing experiment ideas:
 ${existingExperiments}
 
-Generate 3–6 practical validation experiments.
-
-Remember:
-- Use the provided assumption/risk IDs.
-- Do not claim validation has already happened.
-- Return JSON only.`
+Create the validation experiments now.`
 }
 
 async function readBody(req) {
@@ -152,162 +204,104 @@ async function readBody(req) {
   })
 }
 
-function parseAndValidate(content) {
-  let data
-
-  try {
-    data = JSON.parse(content)
-  } catch {
-    const match = content.match(/```(?:json)?\s*([\s\S]*?)```/)
-
-    if (match) {
-      try {
-        data = JSON.parse(match[1])
-      } catch {
-        data = undefined
-      }
-    }
-
-    if (!data) {
-      throw new ExperimentError(
-        502,
-        'The validation plan was not valid JSON.',
-      )
-    }
-  }
-
-  const result = validateExperimentsResponse(data)
-
-  if (!result.success) {
-    throw new ExperimentError(
-      502,
-      'The validation plan did not match the expected structure.',
-    )
-  }
-
-  return result.data
-}
-
-/*
- * Lightweight rate limiting.
- */
-const RATE_LIMIT_WINDOW_MS = 60_000
-const RATE_LIMIT_MAX = 20
-const hits = new Map()
-
-function checkRateLimit() {
-  const now = Date.now()
-
-  const entries = (hits.get('global') || []).filter(
-    (time) => now - time < RATE_LIMIT_WINDOW_MS,
-  )
-
-  if (entries.length >= RATE_LIMIT_MAX) {
-    throw new ExperimentError(
-      429,
-      'Too many requests right now. Please wait a moment and try again.',
-    )
-  }
-
-  entries.push(now)
-  hits.set('global', entries)
-}
-
-/*
- * Gemini API through Google's OpenAI-compatible endpoint.
- */
-async function callLLM(messages) {
-  const apiKey = process.env.LLM_API_KEY
+async function callGemini(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
     throw new ExperimentError(
       500,
-      'The validation service is not configured. Set LLM_API_KEY on Vercel.',
+      'The validation service is not configured. Set GEMINI_API_KEY on the server.',
     )
   }
 
-  const baseUrl = (
-    process.env.LLM_BASE_URL ||
-    'https://generativelanguage.googleapis.com/v1beta/openai'
-  ).replace(/\/$/, '')
+  const model =
+    process.env.GEMINI_MODEL ||
+    'gemini-2.5-flash-lite'
 
-  const model = process.env.LLM_MODEL || 'gemini-3.7-flash'
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
+    `?key=${encodeURIComponent(apiKey)}`
 
   const controller = new AbortController()
 
-  const timeout = setTimeout(() => {
-    controller.abort()
-  }, 60000)
+  const timeout = setTimeout(
+    () => controller.abort(),
+    60000,
+  )
 
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(url, {
       method: 'POST',
 
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
       },
 
       body: JSON.stringify({
-        model,
+        systemInstruction: {
+          parts: [
+            {
+              text: SYSTEM_PROMPT,
+            },
+          ],
+        },
 
-        messages,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
 
-        temperature: 0.3,
-
-        response_format: {
-          type: 'json_object',
+        generationConfig: {
+          temperature: 0.4,
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
         },
       }),
 
       signal: controller.signal,
     })
 
-    const responseText = await response.text()
+    const data = await response.json()
 
     if (!response.ok) {
-      let errorMessage = 'The validation provider returned an error.'
-
-      try {
-        const errorJson = JSON.parse(responseText)
-
-        errorMessage =
-          errorJson?.error?.message ||
-          errorJson?.message ||
-          errorMessage
-      } catch {
-        if (responseText) {
-          errorMessage = responseText
-        }
-      }
+      const providerMessage =
+        data?.error?.message ||
+        'Unknown Gemini API error.'
 
       throw new ExperimentError(
-        502,
-        `The validation provider returned an error (${response.status}): ${errorMessage}`,
+        response.status === 429
+          ? 429
+          : 502,
+        `Gemini provider error (${response.status}): ${providerMessage}`,
       )
     }
 
-    let json
-
-    try {
-      json = JSON.parse(responseText)
-    } catch {
-      throw new ExperimentError(
-        502,
-        'The validation provider returned invalid JSON.',
-      )
-    }
-
-    const content = json?.choices?.[0]?.message?.content
+    const content =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || '')
+        .join('')
 
     if (!content) {
       throw new ExperimentError(
         502,
-        'The validation provider returned an empty response.',
+        'Gemini returned an empty validation response.',
       )
     }
 
-    return content
+    try {
+      return JSON.parse(content)
+    } catch {
+      throw new ExperimentError(
+        502,
+        'Gemini returned invalid validation JSON.',
+      )
+    }
   } catch (error) {
     if (error instanceof ExperimentError) {
       throw error
@@ -316,9 +310,14 @@ async function callLLM(messages) {
     if (error?.name === 'AbortError') {
       throw new ExperimentError(
         504,
-        'The validation request timed out.',
+        'The Gemini validation request timed out.',
       )
     }
+
+    console.error(
+      'Gemini validation error:',
+      error,
+    )
 
     throw new ExperimentError(
       502,
@@ -329,37 +328,50 @@ async function callLLM(messages) {
   }
 }
 
-/*
- * Remove hallucinated assumption/risk IDs.
- */
 function sanitizeLinks(experiments, analysis) {
   const validIds = new Set()
 
-  if (Array.isArray(analysis.assumptions)) {
-    analysis.assumptions.forEach((_, index) => {
-      validIds.add(`assumption-${index + 1}`)
-    })
-  }
+  analysis.assumptions?.forEach(
+    (_, index) => {
+      validIds.add(
+        `assumption-${index + 1}`,
+      )
+    },
+  )
 
-  if (Array.isArray(analysis.risks)) {
-    analysis.risks.forEach((_, index) => {
-      validIds.add(`risk-${index + 1}`)
-    })
-  }
+  analysis.risks?.forEach(
+    (_, index) => {
+      validIds.add(
+        `risk-${index + 1}`,
+      )
+    },
+  )
 
   return experiments.map((experiment) => ({
     ...experiment,
 
-    assumptionIds: Array.isArray(experiment.assumptionIds)
-      ? experiment.assumptionIds.filter((id) => validIds.has(id))
-      : [],
+    assumptionIds:
+      (experiment.assumptionIds || [])
+        .filter((id) =>
+          validIds.has(id),
+        ),
   }))
 }
 
-export async function experimentHandler(req, res) {
-  if (req.method && req.method !== 'POST') {
+export async function experimentHandler(
+  req,
+  res,
+) {
+  if (
+    req.method &&
+    req.method !== 'POST'
+  ) {
     res.statusCode = 405
-    res.setHeader('Content-Type', 'application/json')
+
+    res.setHeader(
+      'Content-Type',
+      'application/json',
+    )
 
     res.end(
       JSON.stringify({
@@ -372,15 +384,21 @@ export async function experimentHandler(req, res) {
 
   const body = await readBody(req)
 
-  const parsed = validateExperimentRequest(body)
+  const parsed =
+    validateExperimentRequest(body)
 
   if (!parsed.success) {
     res.statusCode = 400
-    res.setHeader('Content-Type', 'application/json')
+
+    res.setHeader(
+      'Content-Type',
+      'application/json',
+    )
 
     res.end(
       JSON.stringify({
-        error: 'Invalid validation request.',
+        error:
+          'Invalid validation request.',
       }),
     )
 
@@ -388,31 +406,43 @@ export async function experimentHandler(req, res) {
   }
 
   try {
-    checkRateLimit()
-
-    const { idea, analysis } = parsed.data
-
-    const content = await callLLM([
-      {
-        role: 'system',
-        content: SYSTEM_PROMPT,
-      },
-
-      {
-        role: 'user',
-        content: buildPrompt(idea, analysis),
-      },
-    ])
-
-    const result = parseAndValidate(content)
-
-    const experiments = sanitizeLinks(
-      result.experiments,
+    const {
+      idea,
       analysis,
-    )
+    } = parsed.data
+
+    const result =
+      await callGemini(
+        buildPrompt(
+          idea,
+          analysis,
+        ),
+      )
+
+    const validated =
+      validateExperimentsResponse(
+        result,
+      )
+
+    if (!validated.success) {
+      throw new ExperimentError(
+        502,
+        'Gemini returned an invalid validation-plan structure.',
+      )
+    }
+
+    const experiments =
+      sanitizeLinks(
+        validated.data.experiments,
+        analysis,
+      )
 
     res.statusCode = 200
-    res.setHeader('Content-Type', 'application/json')
+
+    res.setHeader(
+      'Content-Type',
+      'application/json',
+    )
 
     res.end(
       JSON.stringify({
@@ -431,7 +461,11 @@ export async function experimentHandler(req, res) {
         : 'Unexpected validation error.'
 
     res.statusCode = status
-    res.setHeader('Content-Type', 'application/json')
+
+    res.setHeader(
+      'Content-Type',
+      'application/json',
+    )
 
     res.end(
       JSON.stringify({
@@ -439,4 +473,4 @@ export async function experimentHandler(req, res) {
       }),
     )
   }
-    }
+}
