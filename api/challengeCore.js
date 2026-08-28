@@ -4,19 +4,6 @@ import {
   validateChallengeEvaluation,
 } from '../src/schemas/challenge.schema.js'
 
-/**
- * IdeaProof AI — Skeptical Challenge Service
- *
- * Server-side only.
- * Uses Gemini through Google's OpenAI-compatible API endpoint.
- *
- * Required Vercel environment variables:
- *
- * LLM_API_KEY
- * LLM_MODEL
- * LLM_BASE_URL
- */
-
 class ChallengeError extends Error {
   constructor(status, message) {
     super(message)
@@ -24,112 +11,117 @@ class ChallengeError extends Error {
   }
 }
 
-const CHALLENGE_SYSTEM_PROMPT = `
-You are IdeaProof's skeptical startup-idea challenger.
+const CHALLENGE_SYSTEM_PROMPT = `You are IdeaProof's skeptical challenger.
 
-Your job is to pressure-test a startup idea by asking hard but useful
-questions about its assumptions, risks, uncertainties, target users,
-differentiation, feasibility, acquisition, and monetization.
+Your job is to pressure-test a startup idea by asking difficult but useful questions about assumptions, risks, target users, differentiation, feasibility, acquisition and monetization.
 
 Return ONLY valid JSON.
 
-Required JSON shape:
+For challenges return:
 
 {
   "challenges": [
     {
       "id": "challenge-1",
-      "question": "string",
-      "target": "string",
-      "rationale": "string"
+      "question": "question",
+      "target": "what this tests",
+      "rationale": "why this matters"
     }
   ]
 }
 
 Rules:
-- Produce between 3 and 5 challenges.
-- Use ids challenge-1, challenge-2, challenge-3, etc.
-- Questions must be specific to the supplied idea and analysis.
-- Do not invent facts, statistics, research, or market data.
-- Do not claim that anything has been verified.
-- Questions should be answerable by the founder in a short written response.
-- Focus on important assumptions and risks.
+- Produce 3 to 5 challenges.
+- IDs must be challenge-1, challenge-2, etc.
+- Questions must be grounded in the supplied idea and analysis.
+- Do not invent statistics or research.
 - Be skeptical but respectful.
-- Return JSON only.
-`
+- Do not use markdown.`
 
-const EVALUATE_SYSTEM_PROMPT = `
-You are IdeaProof's skeptical startup-idea challenger.
+const EVALUATE_SYSTEM_PROMPT = `You are IdeaProof's skeptical challenger.
 
 A founder has answered one challenge question.
 
-Your job is to provide:
-1. The strongest skeptical counterargument.
-2. What the founder's answer addressed.
-3. What remains unresolved.
-4. Whether the concern appears materially reduced.
-5. One concrete next validation action.
+Evaluate the answer from a skeptical perspective.
 
-Return ONLY valid JSON.
-
-Required JSON shape:
+Return ONLY valid JSON:
 
 {
-  "challengeId": "string",
-  "counterargument": "string",
-  "addressedConcern": "string",
-  "remainingConcern": "string",
+  "challengeId": "challenge id",
+  "counterargument": "strongest skeptical rebuttal",
+  "addressedConcern": "what the answer addressed",
+  "remainingConcern": "what remains unresolved",
   "assessmentChange": {
-    "changed": true,
-    "explanation": "string"
+    "changed": false,
+    "explanation": "plain-language explanation"
   },
-  "nextAction": "string"
+  "nextAction": "one concrete validation action"
 }
 
 Rules:
-- This is simulated skeptical scrutiny.
-- Never claim that you verified facts.
-- Never assign numeric scores.
-- Never invent statistics or research.
-- If the founder's answer is weak or vague, changed should be false.
-- If the founder's answer is specific and convincing, changed may be true.
-- Keep the response grounded in the supplied idea and challenge.
-- Return JSON only.
-`
+- This is simulated scrutiny, not verified truth.
+- Do not assign numeric scores.
+- Do not invent statistics.
+- Be grounded in the provided idea and answer.
+- Do not use markdown.`
+
+const CHALLENGE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    challenges: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          id: { type: 'STRING' },
+          question: { type: 'STRING' },
+          target: { type: 'STRING' },
+          rationale: { type: 'STRING' },
+        },
+        required: [
+          'id',
+          'question',
+          'target',
+          'rationale',
+        ],
+      },
+    },
+  },
+  required: ['challenges'],
+}
+
+const EVALUATION_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    challengeId: { type: 'STRING' },
+    counterargument: { type: 'STRING' },
+    addressedConcern: { type: 'STRING' },
+    remainingConcern: { type: 'STRING' },
+
+    assessmentChange: {
+      type: 'OBJECT',
+      properties: {
+        changed: { type: 'BOOLEAN' },
+        explanation: { type: 'STRING' },
+      },
+      required: ['changed', 'explanation'],
+    },
+
+    nextAction: { type: 'STRING' },
+  },
+
+  required: [
+    'challengeId',
+    'counterargument',
+    'addressedConcern',
+    'remainingConcern',
+    'assessmentChange',
+    'nextAction',
+  ],
+}
 
 function buildChallengePrompt(idea, analysis) {
-  const targetUsers = idea.targetUsers?.trim() || 'Not provided'
-  const problem = idea.problem?.trim() || 'Not provided'
-
-  const assumptions = Array.isArray(analysis.assumptions)
-    ? analysis.assumptions
-        .map(
-          (a, index) =>
-            `- assumption-${index + 1}: ${a.assumption} — ${a.rationale}`,
-        )
-        .join('\n')
-    : '- None listed'
-
-  const risks = Array.isArray(analysis.risks)
-    ? analysis.risks
-        .map(
-          (r, index) =>
-            `- risk-${index + 1}: [${r.severity}] ${r.risk} — ${r.note}`,
-        )
-        .join('\n')
-    : '- None listed'
-
-  const categoryScores = Array.isArray(analysis.categoryScores)
-    ? analysis.categoryScores
-        .map(
-          (c) =>
-            `- ${c.category}: ${c.score}/100 — ${c.explanation}`,
-        )
-        .join('\n')
-    : '- None listed'
-
-  return `
-Startup idea:
+  return `Pressure-test this startup idea.
 
 Title:
 ${idea.title}
@@ -138,22 +130,43 @@ Description:
 ${idea.description}
 
 Target users:
-${targetUsers}
+${idea.targetUsers?.trim() || 'Not provided'}
 
-Problem being solved:
-${problem}
+Problem:
+${idea.problem?.trim() || 'Not provided'}
 
 AI assessment summary:
 ${analysis.summary}
 
-Key assumptions:
-${assumptions}
+Assumptions:
+${
+  analysis.assumptions
+    ?.map(
+      (a) =>
+        `- ${a.assumption}: ${a.rationale}`,
+    )
+    .join('\n') || '- None'
+}
 
 Risks:
-${risks}
+${
+  analysis.risks
+    ?.map(
+      (r) =>
+        `- [${r.severity}] ${r.risk}: ${r.note}`,
+    )
+    .join('\n') || '- None'
+}
 
 Category scores:
-${categoryScores}
+${
+  analysis.categoryScores
+    ?.map(
+      (c) =>
+        `- ${c.category}: ${c.score}/100 — ${c.explanation}`,
+    )
+    .join('\n') || '- None'
+}
 
 Overall score:
 ${analysis.overallScore}/100
@@ -164,58 +177,45 @@ ${analysis.confidence}/100
 Verdict:
 ${analysis.verdict}
 
-Create 3 to 5 skeptical challenge questions based only on this information.
-
-Return JSON only.
-`
+Generate the skeptical challenge questions now.`
 }
 
-function buildEvaluatePrompt(idea, analysis, challenge, response) {
-  const targetUsers = idea.targetUsers?.trim() || 'Not provided'
-  const problem = idea.problem?.trim() || 'Not provided'
+function buildEvaluatePrompt(
+  idea,
+  analysis,
+  challenge,
+  response,
+) {
+  return `Evaluate this founder response skeptically.
 
-  return `
 Startup idea:
-
-Title:
 ${idea.title}
 
 Description:
 ${idea.description}
 
 Target users:
-${targetUsers}
+${idea.targetUsers?.trim() || 'Not provided'}
 
-Problem being solved:
-${problem}
+Problem:
+${idea.problem?.trim() || 'Not provided'}
 
-Original AI assessment:
+Original assessment:
 ${analysis.summary}
 
-Original verdict:
+Verdict:
 ${analysis.verdict}
 
 Challenge:
-
-ID:
-${challenge.id}
-
-Question:
-${challenge.question}
-
-Target:
-${challenge.target}
-
-Rationale:
-${challenge.rationale}
+ID: ${challenge.id}
+Question: ${challenge.question}
+Target: ${challenge.target}
+Rationale: ${challenge.rationale}
 
 Founder response:
 ${response}
 
-Evaluate the founder's response from a skeptical perspective.
-
-Return JSON only.
-`
+Return the skeptical evaluation now.`
 }
 
 async function readBody(req) {
@@ -251,168 +251,103 @@ async function readBody(req) {
       }
     })
 
-    req.on('error', () => {
-      resolve({})
-    })
+    req.on('error', () => resolve({}))
   })
 }
 
-function parseAndValidate(content, schema) {
-  let data
-
-  try {
-    data = JSON.parse(content)
-  } catch {
-    const match = content.match(/```(?:json)?\s*([\s\S]*?)```/i)
-
-    if (match) {
-      try {
-        data = JSON.parse(match[1])
-      } catch {
-        data = undefined
-      }
-    }
-
-    if (!data) {
-      throw new ChallengeError(
-        502,
-        'The challenge result was not valid JSON.',
-      )
-    }
-  }
-
-  const result = schema.safeParse(data)
-
-  if (!result.success) {
-    throw new ChallengeError(
-      502,
-      'The challenge result did not match the expected structure.',
-    )
-  }
-
-  return result.data
-}
-
-const RATE_LIMIT_WINDOW_MS = 60_000
-const RATE_LIMIT_MAX = 20
-
-const hits = new Map()
-
-function checkRateLimit() {
-  const now = Date.now()
-
-  const entries = (hits.get('global') || []).filter(
-    (time) => now - time < RATE_LIMIT_WINDOW_MS,
-  )
-
-  if (entries.length >= RATE_LIMIT_MAX) {
-    throw new ChallengeError(
-      429,
-      'Too many requests right now. Please wait a moment and try again.',
-    )
-  }
-
-  entries.push(now)
-
-  hits.set('global', entries)
-}
-
-async function callLLM(messages) {
-  const apiKey = process.env.LLM_API_KEY
+async function callGemini(prompt, schema) {
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
     throw new ChallengeError(
       500,
-      'The challenge service is not configured. Set LLM_API_KEY on the server.',
+      'The challenge service is not configured. Set GEMINI_API_KEY on the server.',
     )
   }
 
-  const baseUrl = (
-    process.env.LLM_BASE_URL ||
-    'https://generativelanguage.googleapis.com/v1beta/openai'
-  ).replace(/\/$/, '')
-
   const model =
-    process.env.LLM_MODEL || 'gemini-2.5-flash'
+    process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite'
+
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
+    `?key=${encodeURIComponent(apiKey)}`
 
   const controller = new AbortController()
-
-  const timeout = setTimeout(() => {
-    controller.abort()
-  }, 60000)
+  const timeout = setTimeout(
+    () => controller.abort(),
+    60000,
+  )
 
   try {
-    const response = await fetch(
-      `${baseUrl}/chat/completions`,
-      {
-        method: 'POST',
+    const response = await fetch(url, {
+      method: 'POST',
 
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                schema === CHALLENGE_SCHEMA
+                  ? CHALLENGE_SYSTEM_PROMPT
+                  : EVALUATE_SYSTEM_PROMPT,
+            },
+          ],
         },
 
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: 0.3,
-
-          response_format: {
-            type: 'json_object',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
           },
-        }),
+        ],
 
-        signal: controller.signal,
-      },
-    )
+        generationConfig: {
+          temperature: 0.4,
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+        },
+      }),
 
-    const responseText = await response.text()
+      signal: controller.signal,
+    })
+
+    const data = await response.json()
 
     if (!response.ok) {
-      let providerMessage =
-        'The challenge provider returned an error.'
-
-      try {
-        const errorJson = JSON.parse(responseText)
-
-        providerMessage =
-          errorJson?.error?.message ||
-          errorJson?.message ||
-          providerMessage
-      } catch {
-        if (responseText) {
-          providerMessage = responseText
-        }
-      }
+      const providerMessage =
+        data?.error?.message ||
+        'Unknown Gemini API error.'
 
       throw new ChallengeError(
-        502,
-        `The challenge provider returned an error (${response.status}): ${providerMessage}`,
-      )
-    }
-
-    let json
-
-    try {
-      json = JSON.parse(responseText)
-    } catch {
-      throw new ChallengeError(
-        502,
-        'The challenge provider returned invalid JSON.',
+        response.status === 429 ? 429 : 502,
+        `Gemini provider error (${response.status}): ${providerMessage}`,
       )
     }
 
     const content =
-      json?.choices?.[0]?.message?.content
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || '')
+        .join('')
 
     if (!content) {
       throw new ChallengeError(
         502,
-        'The challenge provider returned an empty response.',
+        'Gemini returned an empty challenge response.',
       )
     }
 
-    return content
+    try {
+      return JSON.parse(content)
+    } catch {
+      throw new ChallengeError(
+        502,
+        'Gemini returned invalid challenge JSON.',
+      )
+    }
   } catch (error) {
     if (error instanceof ChallengeError) {
       throw error
@@ -421,9 +356,11 @@ async function callLLM(messages) {
     if (error?.name === 'AbortError') {
       throw new ChallengeError(
         504,
-        'The challenge request timed out.',
+        'The Gemini challenge request timed out.',
       )
     }
+
+    console.error('Gemini challenge error:', error)
 
     throw new ChallengeError(
       502,
@@ -434,57 +371,35 @@ async function callLLM(messages) {
   }
 }
 
-function sanitizeChallenges(challenges) {
-  return challenges.map((challenge, index) => ({
-    id: `challenge-${index + 1}`,
-    question: challenge.question,
-    target: challenge.target,
-    rationale: challenge.rationale,
-  }))
-}
-
 export async function challengeHandler(req, res) {
   if (req.method && req.method !== 'POST') {
     res.statusCode = 405
-
-    res.setHeader(
-      'Content-Type',
-      'application/json',
-    )
-
+    res.setHeader('Content-Type', 'application/json')
     res.end(
       JSON.stringify({
         error: 'Method not allowed.',
       }),
     )
-
     return
   }
 
   const body = await readBody(req)
 
-  const parsed = validateChallengeRequest(body)
+  const parsed =
+    validateChallengeRequest(body)
 
   if (!parsed.success) {
     res.statusCode = 400
-
-    res.setHeader(
-      'Content-Type',
-      'application/json',
-    )
-
+    res.setHeader('Content-Type', 'application/json')
     res.end(
       JSON.stringify({
         error: 'Invalid challenge request.',
       }),
     )
-
     return
   }
 
   try {
-    checkRateLimit()
-
     const { action } = parsed.data
 
     if (action === 'challenges') {
@@ -493,31 +408,25 @@ export async function challengeHandler(req, res) {
         analysis,
       } = parsed.data
 
-      const content = await callLLM([
-        {
-          role: 'system',
-          content: CHALLENGE_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: buildChallengePrompt(
-            idea,
-            analysis,
-          ),
-        },
-      ])
-
-      const result = parseAndValidate(
-        content,
-        validateChallengesResponse,
+      const result = await callGemini(
+        buildChallengePrompt(
+          idea,
+          analysis,
+        ),
+        CHALLENGE_SCHEMA,
       )
 
-      const challenges = sanitizeChallenges(
-        result.challenges,
-      )
+      const validated =
+        validateChallengesResponse(result)
+
+      if (!validated.success) {
+        throw new ChallengeError(
+          502,
+          'Gemini returned an invalid challenge structure.',
+        )
+      }
 
       res.statusCode = 200
-
       res.setHeader(
         'Content-Type',
         'application/json',
@@ -525,59 +434,51 @@ export async function challengeHandler(req, res) {
 
       res.end(
         JSON.stringify({
-          challenges,
+          challenges:
+            validated.data.challenges,
         }),
       )
 
       return
     }
 
-    if (action === 'evaluate') {
-      const {
+    const {
+      idea,
+      analysis,
+      challenge,
+      response,
+    } = parsed.data
+
+    const result = await callGemini(
+      buildEvaluatePrompt(
         idea,
         analysis,
         challenge,
         response,
-      } = parsed.data
+      ),
+      EVALUATION_SCHEMA,
+    )
 
-      const content = await callLLM([
-        {
-          role: 'system',
-          content: EVALUATE_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: buildEvaluatePrompt(
-            idea,
-            analysis,
-            challenge,
-            response,
-          ),
-        },
-      ])
+    const validated =
+      validateChallengeEvaluation(result)
 
-      const evaluation = parseAndValidate(
-        content,
-        validateChallengeEvaluation,
+    if (!validated.success) {
+      throw new ChallengeError(
+        502,
+        'Gemini returned an invalid evaluation structure.',
       )
-
-      res.statusCode = 200
-
-      res.setHeader(
-        'Content-Type',
-        'application/json',
-      )
-
-      res.end(
-        JSON.stringify(evaluation),
-      )
-
-      return
     }
 
-    throw new ChallengeError(
-      400,
-      'Unsupported challenge action.',
+    res.statusCode = 200
+    res.setHeader(
+      'Content-Type',
+      'application/json',
+    )
+
+    res.end(
+      JSON.stringify(
+        validated.data,
+      ),
     )
   } catch (error) {
     const status =
@@ -591,7 +492,6 @@ export async function challengeHandler(req, res) {
         : 'Unexpected challenge error.'
 
     res.statusCode = status
-
     res.setHeader(
       'Content-Type',
       'application/json',
@@ -603,4 +503,4 @@ export async function challengeHandler(req, res) {
       }),
     )
   }
-        }
+}
