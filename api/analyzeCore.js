@@ -1,4 +1,3 @@
-
 import { AnalysisSchema } from '../src/schemas/analysis.schema.js'
 
 /**
@@ -11,8 +10,11 @@ import { AnalysisSchema } from '../src/schemas/analysis.schema.js'
  * Required server environment variable:
  *   GEMINI_API_KEY
  *
- * Gemini model:
- *   gemini-2.5-flash
+ * Optional server environment variable:
+ *   GEMINI_MODEL
+ *
+ * Default model:
+ *   gemini-3.6-flash
  */
 
 class AnalysisError extends Error {
@@ -22,7 +24,7 @@ class AnalysisError extends Error {
   }
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash'
+const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash'
 
 const SYSTEM_PROMPT = `You are IdeaProof, a rigorous and skeptical startup-idea analyst.
 
@@ -224,11 +226,17 @@ function validateInput(body) {
     errors.push('Description is too short.')
   }
 
-  if (title.length > 5000 || description.length > 20000) {
+  if (
+    title.length > 5000 ||
+    description.length > 20000
+  ) {
     errors.push('Input exceeds size limits.')
   }
 
-  if (targetUsers.length > 10000 || problem.length > 10000) {
+  if (
+    targetUsers.length > 10000 ||
+    problem.length > 10000
+  ) {
     errors.push('Input exceeds size limits.')
   }
 
@@ -251,23 +259,25 @@ function extractJson(text) {
 
   const cleaned = text.trim()
 
-  // First try the response directly.
+  // Try direct JSON first.
   try {
     return JSON.parse(cleaned)
   } catch {
-    // Continue below.
+    // Continue.
   }
 
-  // Remove markdown code fences if Gemini unexpectedly adds them.
+  // Handle markdown code fences.
   const fencedMatch = cleaned.match(
     /```(?:json)?\s*([\s\S]*?)\s*```/i,
   )
 
   if (fencedMatch) {
     try {
-      return JSON.parse(fencedMatch[1].trim())
+      return JSON.parse(
+        fencedMatch[1].trim(),
+      )
     } catch {
-      // Continue below.
+      // Continue.
     }
   }
 
@@ -275,7 +285,10 @@ function extractJson(text) {
   const firstBrace = cleaned.indexOf('{')
   const lastBrace = cleaned.lastIndexOf('}')
 
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
+  if (
+    firstBrace !== -1 &&
+    lastBrace > firstBrace
+  ) {
     const possibleJson = cleaned.slice(
       firstBrace,
       lastBrace + 1,
@@ -284,7 +297,7 @@ function extractJson(text) {
     try {
       return JSON.parse(possibleJson)
     } catch {
-      // Continue below.
+      // Continue.
     }
   }
 
@@ -323,7 +336,9 @@ const hits = new Map()
 function checkRateLimit() {
   const now = Date.now()
 
-  const entries = (hits.get('global') || []).filter(
+  const entries = (
+    hits.get('global') || []
+  ).filter(
     (timestamp) =>
       now - timestamp < RATE_LIMIT_WINDOW_MS,
   )
@@ -350,9 +365,13 @@ async function callGemini(idea) {
     )
   }
 
+  const model =
+    process.env.GEMINI_MODEL ||
+    DEFAULT_GEMINI_MODEL
+
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/` +
-    `${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
+    `${model}:generateContent?key=${encodeURIComponent(apiKey)}`
 
   const controller = new AbortController()
 
@@ -397,7 +416,8 @@ async function callGemini(idea) {
       signal: controller.signal,
     })
 
-    const responseText = await response.text()
+    const responseText =
+      await response.text()
 
     let json
 
@@ -411,7 +431,7 @@ async function callGemini(idea) {
 
       throw new AnalysisError(
         502,
-        'The analysis provider returned an invalid response.',
+        'The Gemini provider returned an invalid response.',
       )
     }
 
@@ -433,6 +453,13 @@ async function callGemini(idea) {
         throw new AnalysisError(
           502,
           `Gemini API error: ${providerMessage}`,
+        )
+      }
+
+      if (response.status === 404) {
+        throw new AnalysisError(
+          502,
+          `Gemini model "${model}" was not found. Check GEMINI_MODEL in Vercel.`,
         )
       }
 
@@ -493,8 +520,14 @@ async function callGemini(idea) {
   }
 }
 
-export async function analyzeHandler(req, res) {
-  if (req.method && req.method !== 'POST') {
+export async function analyzeHandler(
+  req,
+  res,
+) {
+  if (
+    req.method &&
+    req.method !== 'POST'
+  ) {
     res.statusCode = 405
 
     res.setHeader(
@@ -541,12 +574,13 @@ export async function analyzeHandler(req, res) {
   try {
     checkRateLimit()
 
-    const analysis = await callGemini({
-      title,
-      description,
-      targetUsers,
-      problem,
-    })
+    const analysis =
+      await callGemini({
+        title,
+        description,
+        targetUsers,
+        problem,
+      })
 
     res.statusCode = 200
 
@@ -588,4 +622,3 @@ export async function analyzeHandler(req, res) {
     )
   }
 }
-
